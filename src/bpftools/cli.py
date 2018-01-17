@@ -2,6 +2,7 @@ from __future__ import print_function
 import sys
 import argparse
 from bpftools.bpf import u16, Instr, SeccompInstr, SimpleSeccompState
+from bpftools.parser import parse_bpf_asm, lift
 
 
 # Compat layer
@@ -42,7 +43,9 @@ def disasm(bts, with_hexdump=True, context='bpf'):
 
 
 def parse(listing):
-    return []
+    step1 = parse_bpf_asm(listing)
+    prog = lift(step1)
+    return prog
 
 
 def asm(listing):
@@ -55,7 +58,7 @@ def asm(listing):
 ##
 
 def _err(msg, *args, **kwargs):
-    print(msg.format(*args, **kwargs), file=sys.stdout)
+    print(msg.format(*args, **kwargs), file=sys.stderr)
 
 
 def _die(exit_code, msg, *args, **kwargs):

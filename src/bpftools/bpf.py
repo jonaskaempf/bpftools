@@ -179,7 +179,7 @@ class Instr(object):
 
     def asm(self):
         '''Assemble this instruction into BPF bytecode'''
-        return pack('<HBBI', self.opcode, self.jt, self.jt, self.k)
+        return pack('<HBBI', self.opcode, self.jt, self.jf, self.k)
 
     def disasm(self, pc):
         '''Convert instruction into disassembly listing'''
