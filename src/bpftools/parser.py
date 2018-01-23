@@ -1,3 +1,21 @@
+'''
+Parsers for two variants of BPF syntax:
+
+bpf_asm - classical BPF ASM syntax more or less as accepted by the Linux bpf_asm tool. Equivalent
+    to the syntax outputted when disassembling in 'bpf' mode.
+seccomp - Parse a human-friendly pseudo assembly listings specifically designed for seccomp type
+    programs. Equivalent to the output of 'seccomp-' mode disassembly.
+
+Both forms support labels including the magic 'next' label that means the next instruction (effectively
+not a jump). Additionally, 'seccomp' parsing supports these extra features:
+
+    * Constants are allowed in place of number literals. The set of
+    valid constants are supplied to the 'lift' function and should
+    corresponding to the chosen seccomp ABI.
+
+    * Absolute loads (e.g. 'ld [0]', 'ldxb [4]', etc) can reference a pseudo struct 'data' representing
+    the seccomp_data struct that is input to seccomp programs, e.g. 'ld [0]' can be written as 'A = data.nr'
+'''
 from __future__ import print_function, unicode_literals, absolute_import
 import sys
 from collections import namedtuple
@@ -148,6 +166,18 @@ asm_prog.ignore(comment)
 unlabelled_instr.setParseAction(lambda toks: (None, toks[0]))
 labelled_instr.setParseAction(lambda s,loc,toks: (Lbl(toks[0], s, loc), toks[1][1]))
 
+##
+## Seccomp pseudo assembly syntax
+##
+mem = ign('M') + offset
+lhs = regA | regX | mem
+
+assign = EOS
+arith = EOS
+conditional = EOS
+ret = 'return'
+
+
 pseudo_prog = EOS
 
 def parse_bpf_asm(s):
@@ -157,9 +187,11 @@ def parse_bpf_asm(s):
 
 def lift(labelled_instrs, constants={}):
     '''
-    Resolves labels and replace references with relative pc addresses.
-    Validate only forward jumps.
-    Convert to bpf.Instr instances
+    Post-process parser output into list of bpf.Instr by:
+
+        - Resolve label addresses and replaces label references with relative offsets.
+        - Assert that all jumps are forward jumps.
+        - Replace constants with their values
     '''
     lbls, instrs = zip(*labelled_instrs)
     lbl_mapping = {}
