@@ -483,7 +483,8 @@ class SeccompABI(object):
         if not isinstance(val, int):
             return str(val)
         ret_data = val & self.SECCOMP_RET_DATA
-        actions = {
+        action = val & self.SECCOMP_RET_ACTION
+        ret_actions = {
             self.SECCOMP_RET_KILL: 'KILL',
             self.SECCOMP_RET_TRAP: 'TRAP',
             self.SECCOMP_RET_ERRNO: 'ERRNO({})'.format(ret_data),
@@ -491,11 +492,8 @@ class SeccompABI(object):
             self.SECCOMP_RET_LOG: 'LOG',
             self.SECCOMP_RET_ALLOW: 'ALLOW',
         }
-        if val & self.SECCOMP_RET_ACTION in actions:
-            return actions[val & self.SECCOMP_RET_ACTION]
-        else:
-            return 'KILL'   # See seccomp(2)
-
+        # Default action is KILL, see seccomp(2)
+        return ret_actions.get(action, 'KILL')
 
 
 class SeccompState(object):
@@ -592,18 +590,20 @@ class SeccompInstr(Instr):
             if self.mode == BPF_ABS:
                 val = SeccompOffset(self.k, self.size)
                 setattr(state, dest, val)
+
             elif self.mode == BPF_MEM:
                 val = 'M[{:d}]'.format(self.k)
                 setattr(state, dest, state.M[self.k])
+
             else:
                 val = {
-                    # Offset into seccomp_data struct
                     BPF_IND: '[X + {:#x}]'.format(self.k),
                     BPF_IMM: '#{:#x}'.format(self.k),
                     BPF_LEN: '#{:#x}'.format(SeccompState.SIZEOF_DATA),
                     BPF_MSH: '4*([{:#x}]&0xf)'.format(self.k),
                 }[self.mode]
                 setattr(state, dest, SeccompUnknown())
+
             disasm = '{} = {}'.format(dest, val)
 
         elif self.type in [BPF_ST, BPF_STX]:
@@ -626,8 +626,11 @@ class SeccompInstr(Instr):
         # JUMPS
         elif self.type in [BPF_JMP]:
             if self.src == BPF_K:
-                if isinstance(state.A, SeccompOffset) and state.A.off == SeccompData.nr:
-                    rhs = state.abi.stringify_syscall(self.k)
+                if isinstance(state.A, SeccompOffset):
+                    rhs = {
+                        SeccompData.nr: state.abi.stringify_syscall(self.k),
+                        SeccompData.arch: state.abi.stringify_audit(self.k)
+                    }.get(state.A.off, '{:#x}'.format(self.k))
                 else:
                     rhs = '{:#x}'.format(self.k)
             elif self.src == BPF_X:
