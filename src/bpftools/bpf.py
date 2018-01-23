@@ -471,7 +471,7 @@ class SeccompABI(object):
         self.syscalls[generic['__X32_SYSCALL_BIT']] = '__X32_SYSCALL_BIT'
     
     def _load_syscall_defs(self, d):
-        return { num: k.lstrip('__NR_') for k, num in d.items() }
+        return { num: k.replace('__NR_', 'SYS_', 1) for k, num in d.items() }
 
     def stringify_syscall(self, no):
         return self.syscalls.get(no, 'syscall({})'.format(no))

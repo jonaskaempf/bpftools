@@ -9,9 +9,11 @@ from bpftools.parser import parse_bpf_asm, lift
 if sys.version_info.major == 2:
     STDIN_BYTES = sys.stdin
     STDOUT_BYTES = sys.stdout
+    STDOUT_TEXT = sys.stdout
 else:
     STDIN_BYTES = sys.stdin.buffer
     STDOUT_BYTES = sys.stdout.buffer
+    STDOUT_TEXT = sys.stdout
 
 
 def disasm(bts, with_hexdump=True, context='bpf'):
@@ -67,16 +69,27 @@ def _die(exit_code, msg, *args, **kwargs):
 
 
 def _cmd_disasm(args):
+    '''
+    Disassemble byte stream as BPF program.
+
+    Optionally, the program bytes may be preceded by a short int specifying the program
+    length in bytes
+    '''
     data = args.prog.read()
-    # handle two types of program files: with short prog_len as header, and without
     if len(data) % 8 == 0:
         prog = data
     elif len(data[2:]) % 8 == 0 and u16(data[:2]) == len(data[2:]):
         prog = data[2:]
     else:
-        _die(1, 'Cannot find a program in binary!')
+        _die(1, 'No program found in {}'.format(args.prog))
     with_hexdump = not args.no_hexdump
-    print(disasm(prog, with_hexdump=with_hexdump, context=args.vm_type))
+    header = '; pc  ' + ('{:^4s} {:^4s} {:^4s} {:^10s}'.format('op', 'jt', 'jf', 'k') if with_hexdump else '') + ' instr' 
+    header += '\n;' + '-'*(37 if with_hexdump else 11) + '\n'
+    listing = disasm(prog, with_hexdump=with_hexdump, context=args.vm_type)
+
+    args.out.write(header)
+    args.out.write(listing)
+    args.out.write('\n')
         
 
 def _cmd_asm(args):
@@ -92,9 +105,10 @@ def run_cli(cmd_args=None):
         help='Which BPF VM to apply.  Default: (generic) bpf')
     cmd_parsers = parser.add_subparsers(help='Commands')
 
-    disasm = cmd_parsers.add_parser('disasm', help='Show disassembly listing')
+    disasm = cmd_parsers.add_parser('disasm', help='Generate disassembly listing')
     disasm.add_argument('--no-hexdump', action='store_true')
-    disasm.add_argument('prog', nargs='?', default=sys.stdin, type=argparse.FileType('rb'))
+    disasm.add_argument('-o', '--out', help='Output file', default=STDOUT_TEXT, type=argparse.FileType('w'))
+    disasm.add_argument('prog', nargs='?', default=STDIN_BYTES, type=argparse.FileType('rb'))
     disasm.set_defaults(action=_cmd_disasm)
 
     asm = cmd_parsers.add_parser('asm', help='Assemble BPF program')
