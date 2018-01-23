@@ -7,13 +7,13 @@ from bpftools.parser import parse_bpf_asm, lift
 
 # Compat layer
 if sys.version_info.major == 2:
-    STDIN_BYTES = sys.stdin
-    STDOUT_BYTES = sys.stdout
-    STDOUT_TEXT = sys.stdout
+    STDIN_TEXT = STDIN_BYTES = sys.stdin
+    STDOUT_TEXT = STDOUT_BYTES = sys.stdout
 else:
     STDIN_BYTES = sys.stdin.buffer
     STDOUT_BYTES = sys.stdout.buffer
     STDOUT_TEXT = sys.stdout
+    STDIN_TEXT = sys.stdin
 
 
 def disasm(bts, with_hexdump=True, context='bpf'):
@@ -112,7 +112,7 @@ def run_cli(cmd_args=None):
     disasm.set_defaults(action=_cmd_disasm)
 
     asm = cmd_parsers.add_parser('asm', help='Assemble BPF program')
-    asm.add_argument('prog', nargs='?', default=STDIN_BYTES, type=argparse.FileType('rb'))
+    asm.add_argument('prog', nargs='?', default=STDIN_TEXT, type=argparse.FileType('r'))
     asm.add_argument('out', nargs='?', default=STDOUT_BYTES, type=argparse.FileType('wb'))
     asm.set_defaults(action=_cmd_asm)
 
