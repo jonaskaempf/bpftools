@@ -38,6 +38,7 @@ class BN_BPFArch(Architecture):
         self.Mnemonic = partial(_create_token, TokType.InstructionToken)
         self.Sep = partial(_create_token, TokType.OperandSeparatorToken)
         self.Reg = partial(_create_token, TokType.RegisterToken)
+        self.Const = lambda x, name: InstructionTextToken(TokType.IntegerToken, name, x)
         self.Int = lambda x: InstructionTextToken(TokType.IntegerToken, hex(x), x)
         self.Addr = lambda x: InstructionTextToken(TokType.PossibleAddressToken, hex(x), x)
         self.Float = partial(_create_token, TokType.FloatingPointToken)
@@ -97,7 +98,7 @@ class BN_BPFArch(Architecture):
                 T.Mnemonic(Mnemonics[instr.type|instr.op]),
                 T.space,
                 {
-                    BPF_K: T.Int(instr.k),
+                    BPF_K: T.Const(instr.k, '__X32_SYSCALL_BIT') if instr.k == 0x40000000 else T.Int(instr.k),
                     BPF_X: T.Reg('X'),
                 }[instr.src],
                 T.space,
@@ -193,11 +194,12 @@ class BN_BPFArch(Architecture):
                 jf = pc + 1 + instr.jf
                 true_lbl = self._get_jump_label(il, jt)
                 false_lbl = self._get_jump_label(il, jf)
+                rhs = { BPF_K: constK, BPF_X: regX }[instr.src]
                 cond = {
-                    BPF_JEQ: il.compare_equal(sz, regA, constK),
-                    BPF_JGT: il.compare_unsigned_greater_than(sz, regA, constK),
-                    BPF_JGE: il.compare_unsigned_greater_equal(sz, regA, constK),
-                    BPF_JSET: il.compare_not_equal(sz, il.and_expr(sz, regA, constK), il.const(sz, 0)),
+                    BPF_JEQ: il.compare_equal(sz, regA, rhs),
+                    BPF_JGT: il.compare_unsigned_greater_than(sz, regA, rhs),
+                    BPF_JGE: il.compare_unsigned_greater_equal(sz, regA, rhs),
+                    BPF_JSET: il.compare_not_equal(sz, il.and_expr(sz, regA, rhs), il.const(sz, 0)),
                 }[instr.op]
                 e = il.if_expr(cond, true_lbl, false_lbl)
                 il.append(e)
@@ -212,8 +214,8 @@ class BN_BPFArch(Architecture):
         elif instr.type in [BPF_MISC]:
             il.append(il.set_reg(
                 4, 
-                { BPF_TAX: 'A', BPF_TXA: 'X' }[self.op],
-                il.reg(4, { BPF_TAX: 'X', BPF_TXA: 'A' }[self.op]),
+                { BPF_TAX: 'X', BPF_TXA: 'A' }[instr.op],
+                il.reg(4, { BPF_TAX: 'A', BPF_TXA: 'X' }[instr.op]),
             ))
 
         else:
