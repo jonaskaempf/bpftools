@@ -1,7 +1,7 @@
 ; forbid execve syscall
-ld [4]
+ld [arch]
 jeq AUDIT_ARCH_X86_64, next, die
-ld [0]
+ld [data.nr]
 jge __X32_SYSCALL_BIT, die, next
 jeq SYS_execve, err, allow
 err: ret 0x00050001 ; ERRNO(1)

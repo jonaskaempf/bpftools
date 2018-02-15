@@ -51,7 +51,31 @@ def parse(listing, macro_expander):
     return prog
 
 
-def asm(listing, macro_expander):
+def asm(listing, vm_type):
+    if vm_type.startswith('seccomp'):
+        arch = vm_type.split('-')[1]
+        abi = SeccompABI(arch)
+        offsets = {
+            'nr': 0,
+            'arch': 4,
+            'instruction_pointer': 8,
+            'args[0]': 0x10,
+            'args[1]': 0x18,
+            'args[2]': 0x20,
+            'args[3]': 0x28,
+            'args[4]': 0x30,
+            'args[5]': 0x38,
+        }
+        def macro_expander(macro):
+            return (
+                abi.name_to_syscall.get(macro) or
+                abi.name_to_audit.get(macro) or
+                offsets.get(macro.lstrip('data.')) or
+                abi.unstringify_retval(macro)
+            )
+    else:
+        macro_expander = lambda _: None
+
     prog = parse(listing, macro_expander)
     return b''.join(p.asm() for p in prog)
 
@@ -95,30 +119,7 @@ def _cmd_disasm(args):
 
 def _cmd_asm(args):
     listing = args.prog.read()
-    if args.vm_type.startswith('seccomp'):
-        arch = args.vm_type.split('-')[1]
-        abi = SeccompABI(arch)
-        offsets = {
-            'nr': 0,
-            'arch': 4,
-            'instruction_pointer': 8,
-            'args[0]': 0x10,
-            'args[1]': 0x18,
-            'args[2]': 0x20,
-            'args[3]': 0x28,
-            'args[4]': 0x30,
-            'args[5]': 0x38,
-        }
-        def macro_expander(macro):
-            return (
-                abi.name_to_syscall.get(macro) or
-                abi.name_to_audit.get(macro) or
-                offsets.get(macro.lstrip('data.'))
-            )
-    else:
-        macro_expander = lambda _: None
-
-    args.out.write(asm(listing, macro_expander))
+    args.out.write(asm(listing, args.vm_type))
 
 
 def run_cli(cmd_args=None):
