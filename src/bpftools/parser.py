@@ -40,6 +40,8 @@ comment = ';' + SkipTo( LineEnd() )
 ign = Suppress
 integer = (ign('0x') + lib.hex_integer) | lib.integer
 int_literal = ign( Optional('#') ) + integer
+macro = Word( alphanums + '_.()' )
+const = int_literal | macro
 comma = ign(',')
 parens = lambda content: nestedExpr(opener='(', closer=')', content=content).setParseAction(lambda t: t[0])
 brackets = lambda content: nestedExpr(opener='[', closer=']', content=content).setParseAction(lambda t: t[0])
@@ -48,22 +50,24 @@ var_name = lib.identifier
 regA = ign( Optional('%') ) + Word('aA', exact=1)
 regX = ign( Optional('%') ) + Word('xX', exact=1)
 lbl = lib.identifier
-offset = brackets(int_literal)
+offset = brackets(const)
 
 mode0 = regX
 mode1 = offset
 mode2 = brackets(ign(regX) + ign('+') + int_literal)
 mode3 = ign('M') + offset
-mode4 = int_literal
+mode4 = const
 mode5 = ign('4') + ign('*') + parens(offset + ign('&') + ign('0xf'))
 mode6 = lbl
-mode7a = int_literal + comma + lbl + comma + lbl
+mode7a = const + comma + lbl + comma + lbl
 # mode accepted by bpf_asm
 mode7b = regX + comma + lbl + comma + lbl
-mode8a = int_literal + comma + lbl
+mode8a = const + comma + lbl
 mode8b = regX + comma + lbl
 mode9 = regA
 # TODO mode10 - extensions
+
+ret = (Literal('return') | Literal('ret')).setParseAction(lambda x: 'ret')
 
 instr = (
 # LOAD/STORE
@@ -146,9 +150,9 @@ instr = (
 
 # RET
     # this is accepted by bpf_asm, but is not in the docs
-    | ('ret'  + mode0).setParseAction(lambda t: (BPF_RET|BPF_X, 0, 0, 0))
-    | ('ret'  + mode4).setParseAction(lambda t: (BPF_RET|BPF_K, 0, 0, t[1]))
-    | ('ret'  + mode9).setParseAction(lambda t: (BPF_RET|BPF_A, 0, 0, 0))
+    | ( ret   + mode0).setParseAction(lambda t: (BPF_RET|BPF_X, 0, 0, 0))
+    | ( ret   + mode4).setParseAction(lambda t: (BPF_RET|BPF_K, 0, 0, t[1]))
+    | ( ret   + mode9).setParseAction(lambda t: (BPF_RET|BPF_A, 0, 0, 0))
 
 # MISC
     | Keyword('tax').setParseAction(lambda t: (BPF_MISC|BPF_TAX, 0, 0, 0))
@@ -160,7 +164,7 @@ labelled_instr = labelled + instr
 unlabelled_instr = instr
 
 line = unlabelled_instr | labelled_instr
-asm_prog = OneOrMore( line )
+asm_prog = OneOrMore( line ) + EOS
 asm_prog.ignore(comment)
 
 unlabelled_instr.setParseAction(lambda toks: (None, toks[0]))
@@ -175,17 +179,20 @@ lhs = regA | regX | mem
 assign = EOS
 arith = EOS
 conditional = EOS
-ret = 'return'
 
 
 pseudo_prog = EOS
 
 def parse_bpf_asm(s):
     '''Process string and convert into simplified, labelled instruction components'''
-    return list(asm_prog.parseString(s))
+    try:
+        return list(asm_prog.parseString(s))
+    except ParseException as e:
+        arrow = '-'*(e.col-1) + '^'
+        print('{}:\n{}\n{}'.format(e, e.line, arrow))        
 
 
-def lift(labelled_instrs, constants={}):
+def lift(labelled_instrs, expand_macro=lambda _: None):
     '''
     Post-process parser output into list of bpf.Instr by:
 
@@ -222,10 +229,10 @@ def lift(labelled_instrs, constants={}):
         if opcode == BPF_JMP|BPF_JA:
             k = resolve_label(k, pc)
         elif not isinstance(k, int):
-            if k in constants:
-                k = constants[k]
-            else:
+            k1 = expand_macro(k)
+            if k1 is None:
                 raise ParseTypeError("Undefined 'k' value: '{}'".format(k))
+            k = k1
         prog.append(Instr(opcode, jt, jf, k))
     
     return prog

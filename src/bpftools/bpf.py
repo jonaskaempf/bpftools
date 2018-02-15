@@ -459,25 +459,27 @@ class SeccompABI(object):
 
     def __init__(self, abi):
         if abi == 'i386':
-            self.syscalls = self._load_syscall_defs(arch_i386)
+            self.syscall_to_name = self._load_syscall_defs(arch_i386)
         elif abi == 'x86_64':
-            self.syscalls = self._load_syscall_defs(arch_x86_64)
+            self.syscall_to_name = self._load_syscall_defs(arch_x86_64)
         elif abi == 'x32':
-            self.syscalls = self._load_syscall_defs(arch_x32)
+            self.syscall_to_name = self._load_syscall_defs(arch_x32)
         else:
             raise ValueError('Unknown ABI: {}'.format(abi))
         
-        self.audit_arch = { v: k for k, v in generic.items() if k.startswith('AUDIT_ARCH') }
-        self.syscalls[generic['__X32_SYSCALL_BIT']] = '__X32_SYSCALL_BIT'
+        self.name_to_syscall = { v: k for k,v in self.syscall_to_name.items() }
+        self.audit_to_name = { v: k for k, v in generic.items() if k.startswith('AUDIT_ARCH') }
+        self.syscall_to_name[generic['__X32_SYSCALL_BIT']] = '__X32_SYSCALL_BIT'
+        self.name_to_audit = generic
     
     def _load_syscall_defs(self, d):
         return { num: k.replace('__NR_', 'SYS_', 1) for k, num in d.items() }
 
     def stringify_syscall(self, no):
-        return self.syscalls.get(no, 'syscall({})'.format(no))
+        return self.syscall_to_name.get(no, 'syscall({})'.format(no))
 
     def stringify_audit(self, val):
-        return self.audit_arch.get(val, '{:#x}'.format(val))
+        return self.audit_to_name.get(val, '{:#x}'.format(val))
 
     def stringify_retval(self, val):
         if not isinstance(val, int):
@@ -494,6 +496,16 @@ class SeccompABI(object):
         }
         # Default action is KILL, see seccomp(2)
         return ret_actions.get(action, 'KILL')
+    
+    def unstringify_retval(self, text):
+        text.replace(' ', '')
+        if text[:5] == 'KILL': return self.SECCOMP_RET_KILL
+        if text[:5] == 'TRAP': return self.SECCOMP_RET_TRAP
+        if text[:5] == 'TRACE': return self.SECCOMP_RET_TRACE
+        if text[:5] == 'ALLOW': return self.SECCOMP_RET_ALLOW
+        if text[:5] == 'LOG': return self.SECCOMP_RET_LOG
+        if text[:5] == 'ERRNO': return self.SECCOMP_RET_ERRNO | int(text[6:-1])
+        return None
 
 
 class SeccompState(object):

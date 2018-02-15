@@ -1,7 +1,8 @@
 from __future__ import print_function
 import sys
 import argparse
-from bpftools.bpf import u16, Instr, SeccompInstr, SimpleSeccompState
+from bpftools.bpf import u16, Instr, SeccompInstr, SeccompABI, SimpleSeccompState
+from bpftools.defs import generic, arch_i386, arch_x32, arch_x86_64
 from bpftools.parser import parse_bpf_asm, lift
 
 
@@ -44,14 +45,14 @@ def disasm(bts, with_hexdump=True, context='bpf'):
     return '\n'.join(lns)
 
 
-def parse(listing):
+def parse(listing, macro_expander):
     step1 = parse_bpf_asm(listing)
-    prog = lift(step1)
+    prog = lift(step1, macro_expander)
     return prog
 
 
-def asm(listing):
-    prog = parse(listing)
+def asm(listing, macro_expander):
+    prog = parse(listing, macro_expander)
     return b''.join(p.asm() for p in prog)
 
 
@@ -94,7 +95,30 @@ def _cmd_disasm(args):
 
 def _cmd_asm(args):
     listing = args.prog.read()
-    args.out.write(asm(listing))
+    if args.vm_type.startswith('seccomp'):
+        arch = args.vm_type.split('-')[1]
+        abi = SeccompABI(arch)
+        offsets = {
+            'nr': 0,
+            'arch': 4,
+            'instruction_pointer': 8,
+            'args[0]': 0x10,
+            'args[1]': 0x18,
+            'args[2]': 0x20,
+            'args[3]': 0x28,
+            'args[4]': 0x30,
+            'args[5]': 0x38,
+        }
+        def macro_expander(macro):
+            return (
+                abi.name_to_syscall.get(macro) or
+                abi.name_to_audit.get(macro) or
+                offsets.get(macro.lstrip('data.'))
+            )
+    else:
+        macro_expander = lambda _: None
+
+    args.out.write(asm(listing, macro_expander))
 
 
 def run_cli(cmd_args=None):
