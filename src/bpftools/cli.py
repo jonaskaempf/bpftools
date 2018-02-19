@@ -67,12 +67,17 @@ def asm(listing, vm_type):
             'args[5]': 0x38,
         }
         def macro_expander(macro):
-            return (
-                abi.name_to_syscall.get(macro) or
-                abi.name_to_audit.get(macro) or
-                offsets.get(macro.lstrip('data.')) or
+            if macro.startswith('data.'):
+                macro2 = macro[5:]
+            else:
+                macro2 = macro
+            x = [x for x in [
+                abi.name_to_syscall.get(macro),
+                abi.name_to_audit.get(macro),
+                offsets.get(macro2),
                 abi.unstringify_retval(macro)
-            )
+            ] if x is not None][0]
+            return x
     else:
         macro_expander = lambda _: None
 
