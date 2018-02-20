@@ -50,6 +50,12 @@ def parse(listing, macro_expander):
     prog = lift(step1, macro_expander)
     return prog
 
+'''
+TODO Seccomp programs are more restricted than regular BPF:
+
+https://elixir.bootlin.com/linux/latest/source/kernel/seccomp.c#L106
+
+'''
 
 def asm(listing, vm_type):
     if vm_type.startswith('seccomp'):
