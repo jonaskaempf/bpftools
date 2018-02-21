@@ -611,7 +611,8 @@ class SeccompInstr(Instr):
                 val = {
                     BPF_IND: '[X + {:#x}]'.format(self.k),
                     BPF_IMM: '#{:#x}'.format(self.k),
-                    BPF_LEN: '#{:#x}'.format(SeccompState.SIZEOF_DATA),
+                    #BPF_LEN: '#{:#x}'.format(SeccompState.SIZEOF_DATA),
+                    BPF_LEN: 'len',
                     BPF_MSH: '4*([{:#x}]&0xf)'.format(self.k),
                 }[self.mode]
                 setattr(state, dest, SeccompUnknown())

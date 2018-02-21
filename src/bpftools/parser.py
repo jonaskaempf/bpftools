@@ -36,15 +36,19 @@ class Lbl(namedtuple('Lbl', 'label str loc')):
 lib = pyparsing_common
 
 EOS = Suppress( StringEnd() )
-comment = ';' + SkipTo( LineEnd() )
-ign = Suppress
-integer = (ign('0x') + lib.hex_integer) | lib.integer
-int_literal = ign( Optional('#') ) + integer
-macro = Word( alphanums + '_.()' )
-const = int_literal | macro
-comma = ign(',')
 parens = lambda content: nestedExpr(opener='(', closer=')', content=content).setParseAction(lambda t: t[0])
 brackets = lambda content: nestedExpr(opener='[', closer=']', content=content).setParseAction(lambda t: t[0])
+comment = ';' + SkipTo( LineEnd() )
+ign = Suppress
+
+integer = (ign('0x') + lib.hex_integer) | lib.integer
+int_literal = ign( Optional('#') ) + integer
+macro_idx = (('(' + int_literal + ')') | ('[' + int_literal + ']'))
+macro_idx.setParseAction(lambda t: ''.join(str(x) for x in t))
+macro = Word( alphas, bodyChars=alphanums + '_.' ) + Optional( macro_idx )
+macro.setParseAction(lambda t: ''.join(t))
+const = int_literal | macro
+comma = ign(',')
 
 var_name = lib.identifier
 regA = ign( Optional('%') ) + Word('aA', exact=1)
@@ -78,16 +82,17 @@ instr = (
     | ('ldi'  + mode4).setParseAction(lambda t: (BPF_LD|BPF_W|BPF_IMM, 0, 0, t[1]))
     | ('ldxi' + mode4).setParseAction(lambda t: (BPF_LDX|BPF_W|BPF_IMM, 0, 0, t[1]))
 
+    | ('ldx'  + ign('len')).setParseAction(lambda t: (BPF_LDX|BPF_W|BPF_LEN, 0, 0, 0))
+    | ('ldx'  + mode5).setParseAction(lambda t: (BPF_LDX|BPF_B|BPF_MSH, 0, 0, t[1]))
+    | ('ldx'  + mode3).setParseAction(lambda t: (BPF_LDX|BPF_W|BPF_MEM, 0, 0, t[1]))
+    | ('ldx'  + mode4).setParseAction(lambda t: (BPF_LDX|BPF_W|BPF_IMM, 0, 0, t[1]))
+    | ('ldxb' + mode5).setParseAction(lambda t: (BPF_LDX|BPF_B|BPF_MSH, 0, 0, t[1]))
+
+    | ('ld'  + ign('len')).setParseAction(lambda t: (BPF_LD|BPF_W|BPF_LEN, 0, 0, 0))
     | ('ld'   + mode1).setParseAction(lambda t: (BPF_LD|BPF_W|BPF_ABS, 0, 0, t[1]))
     | ('ld'   + mode2).setParseAction(lambda t: (BPF_LD|BPF_W|BPF_IND, 0, 0, t[1]))
     | ('ld'   + mode3).setParseAction(lambda t: (BPF_LD|BPF_W|BPF_MEM, 0, 0, t[1]))
     | ('ld'   + mode4).setParseAction(lambda t: (BPF_LD|BPF_W|BPF_IMM, 0, 0, t[1]))
-
-    | ('ldx'  + mode3).setParseAction(lambda t: (BPF_LDX|BPF_W|BPF_MEM, 0, 0, t[1]))
-    | ('ldx'  + mode4).setParseAction(lambda t: (BPF_LDX|BPF_W|BPF_IMM, 0, 0, t[1]))
-    | ('ldx'  + mode5).setParseAction(lambda t: (BPF_LDX|BPF_B|BPF_MSH, 0, 0, t[1]))
-    | ('ldx'  + ign('len')).setParseAction(lambda t: (BPF_LDX|BPF_W|BPF_LEN, 0, 0, 0))
-    | ('ldxb' + mode5).setParseAction(lambda t: (BPF_LDX|BPF_B|BPF_MSH, 0, 0, t[1]))
 
     | ('st'   + mode3).setParseAction(lambda t: (BPF_ST, 0, 0, t[1]))
     | ('stx'  + mode3).setParseAction(lambda t: (BPF_STX, 0, 0, t[1]))
